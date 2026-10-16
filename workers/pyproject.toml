@@ -1,0 +1,31 @@
+[project]
+name = "workers"
+version = "0.1.0"
+description = "ML worker for Loupe: transcription, diarization, scenes, OCR and embeddings"
+readme = "README.md"
+license = "MIT"
+authors = [
+    { name = "ABukSwienty", email = "alexanderbukswienty@gmail.com" }
+]
+requires-python = ">=3.13"
+dependencies = [
+    "fastapi[standard]>=0.143.2",
+    "faster-whisper>=1.2.1",
+    "onnxruntime>=1.31.0",
+    "pillow>=12.3.0",
+    "protobuf>=7.36.2",
+    "pyannote-audio>=4.0.7",
+    "python-dotenv>=1.2.4",
+    "rapidocr>=3.10.0",
+    "scenedetect[opencv]>=0.7.2",
+    "sentence-transformers>=6.1.0",
+    "sentencepiece>=0.2.2",
+    "transformers>=5.20.0",
+]
+
+[project.scripts]
+workers = "workers:main"
+
+[build-system]
+requires = ["uv_build>=0.13.1,<0.14.0"]
+build-backend = "uv_build"
