@@ -23,9 +23,6 @@ dependencies = [
     "transformers>=5.20.0",
 ]
 
-[project.scripts]
-workers = "workers:main"
-
-[build-system]
-requires = ["uv_build>=0.13.1,<0.14.0"]
-build-backend = "uv_build"
+# Not a package: the Makefile runs src/main.py and src/download_models.py directly.
+[tool.uv]
+package = false
