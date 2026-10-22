@@ -1,4 +1,4 @@
-import { FilmIcon, ListChecksIcon, PlusIcon, ScanSearchIcon, SearchIcon } from 'lucide-react'
+import { FilmIcon, ImagesIcon, ListChecksIcon, PlusIcon, ScanSearchIcon, SearchIcon } from 'lucide-react'
 import { NavLink, useLocation } from 'react-router'
 import {
   Sidebar,
@@ -21,6 +21,7 @@ const NAV = [
   { to: '/', label: 'Ingest', icon: PlusIcon },
   { to: '/videos', label: 'Videos', icon: FilmIcon },
   { to: '/search', label: 'Search', icon: SearchIcon },
+  { to: '/scene-match', label: 'Scene match', icon: ImagesIcon },
   { to: '/jobs', label: 'Jobs', icon: ListChecksIcon },
 ]
 

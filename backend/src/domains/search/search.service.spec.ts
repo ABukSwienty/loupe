@@ -18,7 +18,11 @@ import { QueueService } from '../../infra/queue/queue.service.js';
 import type { YtDlp } from '../../infra/yt-dlp/interface.js';
 import { GroupsService } from '../groups/groups.service.js';
 import { VideosService } from '../videos/videos.service.js';
-import { SearchScopeNotFoundError, SearchService } from './search.service.js';
+import {
+  ScenesNotDetectedError,
+  SearchScopeNotFoundError,
+  SearchService,
+} from './search.service.js';
 
 /** A unit vector along one axis, slightly tilted towards the next. */
 const axis = (dim: number, i: number, tilt = 0) =>
@@ -369,6 +373,80 @@ describe('SearchService', () => {
         search.scenes('q', 10, { videoId: 'nope' }),
       ).rejects.toBeInstanceOf(SearchScopeNotFoundError);
       expect(worker.embedDocuments).not.toHaveBeenCalled();
+      expect(worker.embedImageQueries).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('scene matches in one video', () => {
+    // Close to s1 (distance ~0.02), far from s2 (~0.8).
+    beforeEach(() => {
+      worker.embedImageQueries.mockResolvedValue({
+        model: 'siglip',
+        dim: SCENE_EMBEDDING_DIM,
+        vectors: [axis(SCENE_EMBEDDING_DIM, 0, 0.2)],
+      });
+    });
+
+    it('returns the scenes within maxDistance, and their share', async () => {
+      const res = await search.sceneMatches('v1', 'a map', 0.5);
+
+      expect(res.video).toEqual({ id: 'v1', title: 'Talk', channel: 'Chan' });
+      expect(res.matches.map((m) => m.scene.id)).toEqual(['s1']);
+      expect(res.matches[0].distance).toBeLessThan(0.05);
+      expect(res.matches[0].scene.keyframeUrl).toBe('/scenes/v1/s1/keyframe');
+      expect(res.scenes).toEqual({ total: 2, embedded: 2, matched: 1 });
+      expect(res.duration).toEqual({ total: 60, matched: 20 });
+    });
+
+    it('matches every embedded scene at maxDistance 2, closest first', async () => {
+      const res = await search.sceneMatches('v1', 'a map', 2);
+
+      expect(res.matches.map((m) => m.scene.id)).toEqual(['s1', 's2']);
+      expect(res.matches[1].distance).toBeGreaterThan(0.7);
+      expect(res.duration.matched).toBe(60);
+    });
+
+    it('returns the scenes further than maxDistance when inverted, furthest first', async () => {
+      saveSceneEmbeddings(store, 'siglip', [
+        { sceneId: 's1', vector: axis(SCENE_EMBEDDING_DIM, 2) },
+      ]);
+
+      const res = await search.sceneMatches('v1', 'a map', 0.5, true);
+
+      // s2 (~0.8) and s1 (now 1.0) are both past 0.5.
+      expect(res.invert).toBe(true);
+      expect(res.matches.map((m) => m.scene.id)).toEqual(['s1', 's2']);
+
+      const narrow = await search.sceneMatches('v1', 'a map', 0.9, true);
+      expect(narrow.matches.map((m) => m.scene.id)).toEqual(['s1']);
+      expect(narrow.scenes).toEqual({ total: 2, embedded: 2, matched: 1 });
+      expect(narrow.duration).toEqual({ total: 60, matched: 20 });
+    });
+
+    it('counts scenes without a vector in the total, but in neither set', async () => {
+      store.$client
+        .prepare("DELETE FROM scene_embeddings WHERE scene_id = 's2'")
+        .run();
+
+      const res = await search.sceneMatches('v1', 'a map', 2);
+      expect(res.scenes).toEqual({ total: 2, embedded: 1, matched: 1 });
+
+      const inverse = await search.sceneMatches('v1', 'a map', 0.5, true);
+      expect(inverse.matches).toEqual([]);
+    });
+
+    it('rejects an unknown video, or one without scenes, before calling the worker', async () => {
+      store
+        .insert(videos)
+        .values({ id: 'v2', title: 'Other', createdAt: now })
+        .run();
+
+      await expect(
+        search.sceneMatches('nope', 'q', 0.8),
+      ).rejects.toBeInstanceOf(SearchScopeNotFoundError);
+      await expect(search.sceneMatches('v2', 'q', 0.8)).rejects.toBeInstanceOf(
+        ScenesNotDetectedError,
+      );
       expect(worker.embedImageQueries).not.toHaveBeenCalled();
     });
   });

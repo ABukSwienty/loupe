@@ -31,6 +31,35 @@ export type SceneHit = {
   scene: Scene;
 };
 
+export type SceneMatch = {
+  distance: Distance;
+  scene: Scene;
+};
+
+/**
+ * The scenes of one video within `maxDistance` of a description, or with
+ * `invert`, the embedded scenes further away than that.
+ */
+export type SceneMatchResponse = {
+  query: string;
+  model: string;
+  maxDistance: Distance;
+  invert: boolean;
+  video: SearchVideo;
+  scenes: {
+    /** Every detected scene. */
+    total: number;
+    /** Scenes with a keyframe vector; the others can't match. */
+    embedded: number;
+    /** The scenes returned in `matches`. */
+    matched: number;
+  };
+  /** Seconds covered by all scenes and by the matched ones. */
+  duration: { total: number; matched: number };
+  /** Closest first, or furthest first with `invert`. */
+  matches: SceneMatch[];
+};
+
 export type SearchResponse<Hit> = {
   query: string;
   model: string;

@@ -380,3 +380,30 @@ export async function searchTranscripts(query: SearchQuery): Promise<SearchRespo
 export async function searchScenes(query: SearchQuery): Promise<SearchResponse<SceneHit>> {
   return (await request<SearchResponse<SceneHit>>('GET', `/search/scenes${queryString(query)}`)).data
 }
+
+/** Cosine distance: 0 is the same direction, 2 the opposite. Lower is closer. */
+export type SceneMatch = { distance: number; scene: Scene }
+
+export type SceneMatchResponse = {
+  query: string
+  model: string
+  maxDistance: number
+  invert: boolean
+  video: SearchVideo
+  /** `embedded` scenes have a keyframe vector; `matched` is the scenes returned in `matches`. */
+  scenes: { total: number; embedded: number; matched: number }
+  /** Seconds covered by all scenes and by the matched ones. */
+  duration: { total: number; matched: number }
+  /** Closest first, or furthest first with `invert`. */
+  matches: SceneMatch[]
+}
+
+/** The scenes of one video within `maxDistance` (default 0.9) of `q`; with `invert`, the embedded ones further away. */
+export async function matchVideoScenes(
+  videoId: string,
+  query: { q: string; maxDistance?: number; invert?: boolean },
+): Promise<SceneMatchResponse> {
+  const params = queryString({ ...query, invert: query.invert ? 'true' : undefined })
+  return (await request<SceneMatchResponse>('GET', `/search/videos/${encodeURIComponent(videoId)}/scenes${params}`))
+    .data
+}

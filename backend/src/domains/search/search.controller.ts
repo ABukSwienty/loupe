@@ -4,21 +4,26 @@ import {
   Controller,
   Get,
   NotFoundException,
+  Param,
   Query,
 } from '@nestjs/common';
 import { WorkerError } from '../../infra/worker-client/worker-client.service.js';
 import type {
   SceneHit,
+  SceneMatchResponse,
   SearchResponse,
   TranscriptHit,
 } from './search.model.js';
 import {
+  ScenesNotDetectedError,
   SearchScopeNotFoundError,
   SearchService,
   type SearchScope,
 } from './search.service.js';
 
 const MAX_K = 50;
+// SigLIP text-to-image distances for good matches are about 0.86-0.92.
+const DEFAULT_MAX_DISTANCE = 0.9;
 
 /**
  * `?q=<text>&k=<hits, default 10, max 50>&groupId=&videoId=`. Hits are
@@ -46,6 +51,37 @@ export class SearchController {
   ): Promise<SearchResponse<SceneHit>> {
     const { q, k, scope } = parseSearchQuery(query);
     return withWorker(() => this.search.scenes(q, k, scope));
+  }
+
+  /**
+   * `?q=<text>&maxDistance=<0-2, default 0.9>&invert=<true|1>`. Every scene
+   * of one video whose keyframe is within that cosine distance of `q`, or
+   * with `invert` every embedded scene further away, and the share of the
+   * video's scenes (and seconds) that is. 404 for an unknown video or when
+   * scene detection hasn't run.
+   */
+  @Get('videos/:videoId/scenes')
+  videoScenes(
+    @Param('videoId') videoId: string,
+    @Query() query: Record<string, unknown>,
+  ): Promise<SceneMatchResponse> {
+    const q = typeof query.q === 'string' ? query.q.trim() : '';
+    if (q === '') throw new BadRequestException('q must be a non-empty string');
+
+    let maxDistance = DEFAULT_MAX_DISTANCE;
+    if (query.maxDistance !== undefined && query.maxDistance !== '') {
+      maxDistance =
+        typeof query.maxDistance === 'string' ? Number(query.maxDistance) : NaN;
+      if (!Number.isFinite(maxDistance) || maxDistance < 0 || maxDistance > 2) {
+        throw new BadRequestException(
+          'maxDistance must be a number from 0 to 2',
+        );
+      }
+    }
+    const invert = query.invert === 'true' || query.invert === '1';
+    return withWorker(() =>
+      this.search.sceneMatches(videoId, q, maxDistance, invert),
+    );
   }
 }
 
@@ -77,7 +113,10 @@ async function withWorker<T>(run: () => Promise<T>): Promise<T> {
   try {
     return await run();
   } catch (err) {
-    if (err instanceof SearchScopeNotFoundError) {
+    if (
+      err instanceof SearchScopeNotFoundError ||
+      err instanceof ScenesNotDetectedError
+    ) {
       throw new NotFoundException(err.message);
     }
     if (err instanceof WorkerError) {

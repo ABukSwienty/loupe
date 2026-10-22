@@ -13,6 +13,7 @@ import {
   listGroups,
   listJobs,
   listVideos,
+  matchVideoScenes,
   searchScenes,
   searchTranscripts,
   type Job,
@@ -105,4 +106,13 @@ export function useSearch(query: SearchQuery | null) {
     [q, k, videoId, groupId],
   )
   return { transcripts: useFetch(transcriptFetcher), scenes: useFetch(sceneFetcher) }
+}
+
+/** One video's scenes within `maxDistance` of `q`, or further with `invert`. Pass an empty `q` to search nothing. */
+export function useSceneMatches(videoId: string, q: string, maxDistance: number, invert: boolean) {
+  const fetcher = useMemo(
+    () => (q ? () => matchVideoScenes(videoId, { q, maxDistance, invert }) : null),
+    [videoId, q, maxDistance, invert],
+  )
+  return useFetch(fetcher)
 }

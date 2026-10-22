@@ -23,6 +23,8 @@ import { GroupsService } from '../groups/groups.service.js';
 import { VideosService } from '../videos/videos.service.js';
 import type {
   SceneHit,
+  SceneMatch,
+  SceneMatchResponse,
   SearchResponse,
   TranscriptHit,
 } from './search.model.js';
@@ -32,6 +34,9 @@ export type SearchScope = { groupId?: string; videoId?: string };
 
 /** The scope names a group or video that doesn't exist. */
 export class SearchScopeNotFoundError extends Error {}
+
+/** The video has no scenes to match against. */
+export class ScenesNotDetectedError extends Error {}
 
 /**
  * Semantic search over the stored vectors. The query is embedded by the
@@ -194,5 +199,79 @@ export class SearchService {
       });
     }
     return { query, model: res.model, hits };
+  }
+
+  /**
+   * Every scene of one video whose keyframe is within `maxDistance` (cosine)
+   * of a text description, and how much of the video they make up. With
+   * `invert`, the embedded scenes further away than that instead; scenes
+   * without a vector are in neither.
+   */
+  async sceneMatches(
+    videoId: string,
+    query: string,
+    maxDistance: number,
+    invert = false,
+    signal?: AbortSignal,
+  ): Promise<SceneMatchResponse> {
+    const video = this.store
+      .select({ id: videos.id, title: videos.title, channel: videos.channel })
+      .from(videos)
+      .where(eq(videos.id, videoId))
+      .get();
+    if (!video)
+      throw new SearchScopeNotFoundError(`Video ${videoId} not found`);
+
+    const rows = this.store
+      .select({ scene: scenes })
+      .from(scenes)
+      .innerJoin(
+        sceneDetections,
+        eq(scenes.sceneDetectionId, sceneDetections.id),
+      )
+      .where(eq(sceneDetections.videoId, videoId))
+      .all()
+      .map((row) => row.scene);
+    if (rows.length === 0) {
+      throw new ScenesNotDetectedError('Scene detection has not run');
+    }
+    const byId = new Map(rows.map((scene) => [scene.id, scene]));
+
+    const res = await this.worker.embedImageQueries([query], { signal });
+    // Distances for all of the video's scenes; thresholding happens here.
+    const neighbours = searchSceneEmbeddings(this.store, res.vectors[0], {
+      k: rows.length,
+      model: res.model,
+      videoIds: [videoId],
+    });
+
+    const matches: SceneMatch[] = [];
+    for (const { id, distance } of neighbours) {
+      const scene = byId.get(id);
+      if (!scene || distance > maxDistance !== invert) continue;
+      matches.push({ distance, scene: toScene(videoId, scene) });
+    }
+    // Neighbours are closest first; the inverse reads best furthest first.
+    if (invert) matches.reverse();
+
+    const length = (s: { start: number; end: number }) => s.end - s.start;
+    const sum = (xs: number[]) => xs.reduce((a, b) => a + b, 0);
+    return {
+      query,
+      model: res.model,
+      maxDistance,
+      invert,
+      video,
+      scenes: {
+        total: rows.length,
+        embedded: neighbours.length,
+        matched: matches.length,
+      },
+      duration: {
+        total: sum(rows.map(length)),
+        matched: sum(matches.map((m) => length(m.scene))),
+      },
+      matches,
+    };
   }
 }

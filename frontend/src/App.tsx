@@ -7,6 +7,7 @@ import { IngestPage } from '@/pages/ingest-page'
 import { JobPage } from '@/pages/job-page'
 import { JobsPage } from '@/pages/jobs-page'
 import { NotFoundPage } from '@/pages/not-found-page'
+import { SceneMatchPage } from '@/pages/scene-match-page'
 import { SearchPage } from '@/pages/search-page'
 import { VideoPage } from '@/pages/video-page'
 import { VideosPage } from '@/pages/videos-page'
@@ -32,6 +33,7 @@ export default function App() {
             <Route path="videos" element={<VideosPage />} />
             <Route path="videos/:id" element={<VideoPage />} />
             <Route path="search" element={<SearchPage />} />
+            <Route path="scene-match" element={<SceneMatchPage />} />
             <Route path="jobs" element={<JobsPage />} />
             <Route path="jobs/:id" element={<JobPage />} />
             <Route path="*" element={<NotFoundPage />} />
