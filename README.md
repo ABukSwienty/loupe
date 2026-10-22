@@ -6,15 +6,15 @@ Loupe is a proof of concept for analysing videos with open-source ML models that
 
 ## What it uses
 
-| Model / tool | Used for |
-| --- | --- |
-| [faster-whisper](https://github.com/SYSTRAN/faster-whisper) `large-v3-turbo` | Transcription with word timings and language detection |
-| [pyannote `speaker-diarization-community-1`](https://huggingface.co/pyannote/speaker-diarization-community-1) | Speaker diarization (who speaks when) |
-| [PySceneDetect](https://www.scenedetect.com/) | Scene detection, with one keyframe per scene |
-| [RapidOCR](https://github.com/RapidAI/RapidOCR) | Text on screen, read from the keyframes |
-| [SigLIP 2](https://huggingface.co/google/siglip2-base-patch16-224) `siglip2-base-patch16-224` | Keyframe embeddings, and embeddings of text queries for searching images |
-| [bge-m3](https://huggingface.co/BAAI/bge-m3) | Transcript embeddings for searching by meaning |
-| [yt-dlp](https://github.com/yt-dlp/yt-dlp) | Video metadata and downloads |
+| Model / tool                                                                                                  | Used for                                                                 |
+| ------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------ |
+| [faster-whisper](https://github.com/SYSTRAN/faster-whisper) `large-v3-turbo`                                  | Transcription with word timings and language detection                   |
+| [pyannote `speaker-diarization-community-1`](https://huggingface.co/pyannote/speaker-diarization-community-1) | Speaker diarization (who speaks when)                                    |
+| [PySceneDetect](https://www.scenedetect.com/)                                                                 | Scene detection, with one keyframe per scene                             |
+| [RapidOCR](https://github.com/RapidAI/RapidOCR)                                                               | Text on screen, read from the keyframes                                  |
+| [SigLIP 2](https://huggingface.co/google/siglip2-base-patch16-224) `siglip2-base-patch16-224`                 | Keyframe embeddings, and embeddings of text queries for searching images |
+| [bge-m3](https://huggingface.co/BAAI/bge-m3)                                                                  | Transcript embeddings for searching by meaning                           |
+| [yt-dlp](https://github.com/yt-dlp/yt-dlp)                                                                    | Video metadata and downloads                                             |
 
 Each model has its own license. Check the linked pages before using Loupe for anything beyond experiments.
 
@@ -39,7 +39,7 @@ The repo has three apps:
 
 ## Setup
 
-1. **Hugging Face access.** Create an access token under *Settings → Access Tokens*. Then open the [pyannote model page](https://huggingface.co/pyannote/speaker-diarization-community-1) and accept its conditions. The model is gated, so the token alone isn't enough.
+1. **Hugging Face access.** Create an access token under _Settings → Access Tokens_. Then open the [pyannote model page](https://huggingface.co/pyannote/speaker-diarization-community-1) and accept its conditions. The model is gated, so the token alone isn't enough.
 
 2. **Worker settings.**
 
@@ -87,6 +87,10 @@ Loupe's code is released under the [MIT License](LICENSE). The models it downloa
 ## Screenshots
 
 The screenshots show Loupe's analysis of two public YouTube videos: [Why fun tech jobs went extinct](https://www.youtube.com/watch?v=0tLEszJs7hc) by Good Work, and [NPM gets hacked again. Deno gets a funeral.](https://www.youtube.com/watch?v=UEF76vVMnVw) by Awesome. All rights to the videos belong to their creators.
+
+### Scene match
+
+![Scene match](screenshots/scene_match.jpg)
 
 ### Video
 
