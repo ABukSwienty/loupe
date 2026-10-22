@@ -1,4 +1,4 @@
-import type { TranscriptionSegment } from './analysis.model.js';
+import type { transcriptionSegments } from '../../infra/store/schema/index.js';
 
 export type TranscriptionChunkDraft = {
   index: number;
@@ -16,7 +16,10 @@ export type TranscriptionChunkDraft = {
  * Segments with no text are skipped.
  */
 export function chunkSegments(
-  segments: Pick<TranscriptionSegment, 'index' | 'start' | 'end' | 'text'>[],
+  segments: Pick<
+    typeof transcriptionSegments.$inferSelect,
+    'index' | 'start' | 'end' | 'text'
+  >[],
   maxDuration = 30,
 ): TranscriptionChunkDraft[] {
   const chunks: TranscriptionChunkDraft[] = [];

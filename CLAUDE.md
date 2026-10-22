@@ -74,7 +74,10 @@ src/
     yt-dlp/       Runs the yt-dlp binary
   domains/        Features. DomainsModule imports all of them.
     videos/       Ingest + download
-    analysis/     One service per ML step, plus the controller
+    analysis/     Routing: queues the steps' jobs, checks prerequisites, the overview
+    transcription/, diarization/, scene-detection/, ocr/, embedding/
+                  One domain per ML step: interface + token, service (job handler and
+                  result reads), controller for its results, model, module
     jobs/         Queue inspection: list, summary, one job
     groups/       Groups CRUD and membership
     search/       Vector search over transcripts and scenes
@@ -86,8 +89,9 @@ Conventions:
 - **Infra behind interfaces**: each adapter has an `interface.ts` with a Symbol token (`STORE`, `JOB_QUEUE`, `WORKER_CLIENT`, `YT_DLP`), injected with `@Inject(TOKEN)`. Domain services are injected by class.
 - **Models**: `*.model.ts` holds the type, plus a `toX(row)` mapper where the API shape differs from the row. Many are just `typeof table.$inferSelect`.
 - **No validation library**: controllers check request bodies by hand and throw `BadRequestException`. Services throw their own error classes (`VideoNotFoundError`, `MissingPrerequisiteError`, ...), and controllers map those to HTTP errors.
+- **Routes**: `common/routes.ts` holds every analysis and step controller's base and paths (`ROUTES.transcription.base`, `.results`, ...). Controllers use it in `@Controller`/`@Get`, and URLs the API returns (`keyframeUrl`) are built from it.
 - **Pagination**: `common/pagination.ts`. List endpoints take `?page=&pageSize=` (1-based, default 20, max 100) via `parsePageQuery` and return `Page<T>`: `{ items, total, page, pageSize }`.
-- **Tests** sit next to the code as `*.spec.ts`. They use a real in-memory store (`openStore(':memory:')`) and construct services directly with fakes for the worker and yt-dlp; no Nest testing module. Follow `domains/analysis/analysis.spec.ts`.
+- **Tests** sit next to the code as `*.spec.ts`. They use a real in-memory store (`openStore(':memory:')`) and construct services directly with fakes for the worker and yt-dlp; no Nest testing module. Each step domain tests its own service, using `src/testing/analysis-fixture.ts` (store, temp media dir with video `v1`, canned fake worker; excluded from the build). `analysis.service.spec.ts` tests only queueing and prerequisites, with fakes of the `Transcriber`/`SceneDetector` interfaces. Follow `domains/transcription/transcription.service.spec.ts`.
 - Prettier is single quotes with trailing commas. Run `npx prettier --write src`.
 
 ## The store (`infra/store/`)
@@ -131,7 +135,7 @@ Drizzle can't describe sqlite-vec virtual tables, so they're in a hand-written m
 | scenes | `scene_detections` | `scenes` (`keyframe_path` to a JPEG on disk) |
 | ocr | `ocr_results` (one per keyframe, `scene_id`) | `ocr_lines` |
 
-Chunks are consecutive segments grouped up to 30 seconds (`domains/analysis/chunking.ts`), and are what gets text-embedded.
+Chunks are consecutive segments grouped up to 30 seconds (`domains/transcription/chunking.ts`), and are what gets text-embedded.
 
 ## The job queue (`infra/queue/`)
 
@@ -190,20 +194,21 @@ One endpoint per step. Each queues a job and responds **202** `{ jobId }`, or **
 - **Re-running a step replaces** that video's previous result, and the delete cascades: re-transcribing drops the transcript embeddings, and re-running scenes drops the OCR results, scene embeddings and old keyframe files. Nothing re-queues those steps automatically.
 - Keyframes are written to `MEDIA_DIR/keyframes/<videoId>/<sceneDetectionId>/0000.jpg`. The worker's base64 is never stored.
 - The worker gets the low-res copy (`low_res_path`, falling back to `file_path`).
-- To add a step: add the name and input to `analysis.jobs.ts`, write a service with the handler, register it in `AnalysisModule.onModuleInit`, add the prerequisite in `AnalysisService.checkPrerequisite`, and add an endpoint to `AnalysisController`.
+- `analysis/` is only the router: it queues jobs, checks prerequisites and registers handlers. Each step is its own top-level domain (`domains/transcription/`, `diarization/`, `scene-detection/`, `ocr/`, `embedding/`) with an `interface.ts` holding a Symbol token (`TRANSCRIBER`, `DIARIZER`, `SCENE_DETECTOR`, `OCR_READER`, `EMBEDDER`) and the step's job input type, the service implementing it, and a module that binds the token with `useClass` and exports it. To swap an implementation, change that module. Each step's service also reads its own results and has a `summary(videoId)` (embedding has `coverage(videoId)`), which `AnalysisService.overview` combines. `AnalysisModule` imports the step modules and registers the job handlers; everything injects the interface with `@Inject(TOKEN)`. OCR and embedding import `SceneDetectionModule` for `keyframeScenes`. `analysis.jobs.ts` builds `AnalysisJobInputs` from the steps' input types, so steps never import from `analysis/`. The upload and batching helpers they share are in `common/media.ts`.
+- To add a step: create `domains/<step>/` with an `interface.ts` (token, input type, interface), the service and its module, add the name and input to `analysis.jobs.ts`, import the module in `AnalysisModule` and register the handler in `onModuleInit`, add the prerequisite in `AnalysisService.checkPrerequisite`, and add an endpoint to `AnalysisController`.
 
-### Analysis results (`analysis-results.controller.ts`, `analysis-results.service.ts`)
+### Analysis results (each step's `*.controller.ts`)
 
 Read-only. Each returns 404 for an unknown video, and 404 `"<step> has not run"` when the step has no result. There's at most one result per step per video, since re-running replaces it. Times are seconds.
 
 | Endpoint | Returns |
 |---|---|
-| `GET /videos/:id/analysis` | `AnalysisOverview`: per step, null or `{ id, createdAt, counts }`, plus embedding coverage (`embedded` of `total`, and `models`) for transcript chunks and scene keyframes. Cheap; use it to show what's done. |
-| `GET /videos/:id/transcription` | The transcription with ordered segments, including words. `?include=chunks` adds the 30-second chunks. |
-| `GET /videos/:id/diarization` | `speakers`, `segments` (overlapping) and `exclusiveSegments`. |
-| `GET /videos/:id/scenes` | The detection with ordered scenes. Each has a `keyframeUrl`, a path relative to the API base; file paths are never exposed. |
-| `GET /videos/:id/scenes/:sceneId/keyframe` | The JPEG, cached as immutable (scene ids change when scenes re-run). |
-| `GET /videos/:id/ocr` | One result per keyframe in video order, each with `sceneId`, `time` and `lines`. |
+| `GET /videos/:id/analysis` (analysis) | `AnalysisOverview`: per step, null or `{ id, createdAt, counts }`, plus embedding coverage (`embedded` of `total`, and `models`) for transcript chunks and scene keyframes. Cheap; use it to show what's done. |
+| `GET /transcription/:videoId` | The transcription with ordered segments, including words. `?include=chunks` adds the 30-second chunks. |
+| `GET /diarization/:videoId` | `speakers`, `segments` (overlapping) and `exclusiveSegments`. |
+| `GET /scenes/:videoId` | The detection with ordered scenes. Each has a `keyframeUrl`, a path relative to the API base; file paths are never exposed. |
+| `GET /scenes/:videoId/:sceneId/keyframe` | The JPEG, cached as immutable (scene ids change when scenes re-run). |
+| `GET /ocr/:videoId` | One result per keyframe in video order, each with `sceneId`, `time` and `lines`. |
 
 Vectors aren't exposed; they're only useful through search. Transcript segments don't carry speakers yet. To add them, match each segment to the exclusive diarization turn it overlaps most, which would fit as `?include=speakers`.
 

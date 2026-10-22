@@ -3,13 +3,16 @@ import {
   Body,
   ConflictException,
   Controller,
+  Get,
   NotFoundException,
   Param,
   Post,
   Res,
 } from '@nestjs/common';
 import type { Response } from 'express';
+import { ROUTES } from '../../common/routes.js';
 import type { AnalysisJobInputs, AnalysisStep } from './analysis.jobs.js';
+import type { AnalysisOverview } from './analysis.model.js';
 import {
   AnalysisService,
   MissingPrerequisiteError,
@@ -23,12 +26,25 @@ type Body = Record<string, unknown> | undefined;
  * id, or 200 with the id of the same step already queued for the video. Poll
  * GET /jobs/:id for the outcome.
  */
-@Controller('videos/:videoId')
+@Controller(ROUTES.analysis.base)
 export class AnalysisController {
   constructor(private readonly analysis: AnalysisService) {}
 
+  /** Which steps have results, with counts and embedding coverage. */
+  @Get(ROUTES.analysis.overview)
+  async overview(@Param('videoId') videoId: string): Promise<AnalysisOverview> {
+    try {
+      return await this.analysis.overview(videoId);
+    } catch (err) {
+      if (err instanceof VideoNotFoundError) {
+        throw new NotFoundException(err.message);
+      }
+      throw err;
+    }
+  }
+
   /** Body: `{ language?: string }`, an ISO code; omit to auto-detect. */
-  @Post('transcribe')
+  @Post(ROUTES.analysis.transcribe)
   transcribe(
     @Param('videoId') videoId: string,
     @Body() body: Body,
@@ -41,7 +57,7 @@ export class AnalysisController {
   }
 
   /** Body: `{ numSpeakers?, minSpeakers?, maxSpeakers? }`, all optional. */
-  @Post('diarize')
+  @Post(ROUTES.analysis.diarize)
   diarize(
     @Param('videoId') videoId: string,
     @Body() body: Body,
@@ -60,7 +76,7 @@ export class AnalysisController {
    * keyframeWidth?: number }`. Defaults: adaptive, the detector's own
    * threshold, 512px keyframes.
    */
-  @Post('scenes')
+  @Post(ROUTES.analysis.scenes)
   scenes(
     @Param('videoId') videoId: string,
     @Body() body: Body,
@@ -79,7 +95,7 @@ export class AnalysisController {
   }
 
   /** Reads text in the scene keyframes. Needs scenes. */
-  @Post('ocr')
+  @Post(ROUTES.analysis.ocr)
   ocr(
     @Param('videoId') videoId: string,
     @Res({ passthrough: true }) res: Response,
@@ -88,7 +104,7 @@ export class AnalysisController {
   }
 
   /** Embeds the transcript chunks for text search. Needs a transcription. */
-  @Post('embeddings/transcript')
+  @Post(ROUTES.analysis.embedTranscript)
   embedTranscript(
     @Param('videoId') videoId: string,
     @Res({ passthrough: true }) res: Response,
@@ -97,7 +113,7 @@ export class AnalysisController {
   }
 
   /** Embeds the scene keyframes for visual search. Needs scenes. */
-  @Post('embeddings/scenes')
+  @Post(ROUTES.analysis.embedScenes)
   embedScenes(
     @Param('videoId') videoId: string,
     @Res({ passthrough: true }) res: Response,

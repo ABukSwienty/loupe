@@ -1,7 +1,7 @@
 import { openAsBlob } from 'node:fs';
 import { basename } from 'node:path';
-import type { UploadInput } from '../../infra/worker-client/interface.js';
-import type { Video } from '../videos/video.model.js';
+import type { UploadInput } from '../infra/worker-client/interface.js';
+import type { Video } from '../domains/videos/video.model.js';
 
 /** The file sent to the worker: the low-res copy, or the original if that's all there is. */
 export async function videoUpload(video: Video): Promise<UploadInput> {

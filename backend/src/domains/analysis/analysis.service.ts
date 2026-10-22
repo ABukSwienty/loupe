@@ -2,13 +2,20 @@ import { Inject, Injectable } from '@nestjs/common';
 import { JOB_QUEUE, type JobQueue } from '../../infra/queue/interface.js';
 import { JobState } from '../../infra/queue/job.model.js';
 import { DOWNLOAD_JOB, VideosService } from '../videos/videos.service.js';
+import { DIARIZER, type Diarizer } from '../diarization/interface.js';
+import { EMBEDDER, type Embedder } from '../embedding/interface.js';
+import { OCR_READER, type OcrReader } from '../ocr/interface.js';
 import {
   ANALYSIS_JOBS,
   type AnalysisJobInputs,
   type AnalysisStep,
 } from './analysis.jobs.js';
-import { SceneDetectionService } from './scene-detection.service.js';
-import { TranscriptionService } from './transcription.service.js';
+import type { AnalysisOverview } from './analysis.model.js';
+import {
+  SCENE_DETECTOR,
+  type SceneDetector,
+} from '../scene-detection/interface.js';
+import { TRANSCRIBER, type Transcriber } from '../transcription/interface.js';
 
 export class VideoNotFoundError extends Error {}
 
@@ -20,9 +27,26 @@ export class AnalysisService {
   constructor(
     @Inject(JOB_QUEUE) private readonly queue: JobQueue,
     private readonly videos: VideosService,
-    private readonly transcription: TranscriptionService,
-    private readonly scenes: SceneDetectionService,
+    @Inject(TRANSCRIBER) private readonly transcription: Transcriber,
+    @Inject(SCENE_DETECTOR) private readonly scenes: SceneDetector,
+    @Inject(DIARIZER) private readonly diarization: Diarizer,
+    @Inject(OCR_READER) private readonly ocr: OcrReader,
+    @Inject(EMBEDDER) private readonly embedding: Embedder,
   ) {}
+
+  /** What each step has stored for the video, from the steps' own summaries. */
+  async overview(videoId: string): Promise<AnalysisOverview> {
+    if (!(await this.videos.findOne(videoId))) {
+      throw new VideoNotFoundError(`Video ${videoId} not found`);
+    }
+    return {
+      transcription: this.transcription.summary(videoId),
+      diarization: this.diarization.summary(videoId),
+      scenes: this.scenes.summary(videoId),
+      ocr: this.ocr.summary(videoId),
+      embeddings: this.embedding.coverage(videoId),
+    };
+  }
 
   /**
    * Queues an analysis step for a video. If the same step is already queued

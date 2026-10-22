@@ -201,7 +201,7 @@ describe('SearchService', () => {
       id: 's1',
       start: 0,
       end: 20,
-      keyframeUrl: '/videos/v1/scenes/s1/keyframe',
+      keyframeUrl: '/scenes/v1/s1/keyframe',
     });
     expect(res.hits[0].scene).not.toHaveProperty('keyframePath');
   });

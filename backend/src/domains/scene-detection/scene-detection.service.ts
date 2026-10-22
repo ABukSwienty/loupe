@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { mkdir, readdir, rm, writeFile } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 import { Inject, Injectable } from '@nestjs/common';
-import { and, asc, eq, isNotNull } from 'drizzle-orm';
+import { and, asc, count, eq, isNotNull, type SQL } from 'drizzle-orm';
 import type { Store } from '../../infra/store/client.js';
 import { sceneDetections, scenes } from '../../infra/store/schema/index.js';
 import { STORE } from '../../infra/store/store.module.js';
@@ -11,17 +11,20 @@ import {
   type WorkerClient,
 } from '../../infra/worker-client/interface.js';
 import { VideosService } from '../videos/videos.service.js';
-import type { AnalysisJobInputs } from './analysis.jobs.js';
-import { batches, INSERT_BATCH, videoUpload } from './media.js';
-
-export type KeyframeScene = {
-  id: string;
-  keyframePath: string;
-  keyframeTime: number | null;
-};
+import { batches, INSERT_BATCH, videoUpload } from '../../common/media.js';
+import type {
+  KeyframeScene,
+  SceneDetectionInput,
+  SceneDetector,
+} from './interface.js';
+import {
+  toScene,
+  type SceneDetection,
+  type SceneDetectionSummary,
+} from './scene.model.js';
 
 @Injectable()
-export class SceneDetectionService {
+export class SceneDetectionService implements SceneDetector {
   constructor(
     @Inject(STORE) private readonly store: Store,
     @Inject(WORKER_CLIENT) private readonly worker: WorkerClient,
@@ -34,7 +37,7 @@ export class SceneDetectionService {
    * results and embeddings too, so those steps have to run again.
    */
   async detect(
-    { videoId, ...params }: AnalysisJobInputs['scenes'],
+    { videoId, ...params }: SceneDetectionInput,
     signal?: AbortSignal,
   ) {
     const video = await this.videos.findOne(videoId);
@@ -137,5 +140,57 @@ export class SceneDetectionService {
 
   private keyframesDir(videoId: string) {
     return resolve(this.videos.mediaDir, 'keyframes', videoId);
+  }
+
+  scenes(videoId: string): SceneDetection | null {
+    const row = this.current(videoId);
+    if (!row) return null;
+
+    const rows = this.store
+      .select()
+      .from(scenes)
+      .where(eq(scenes.sceneDetectionId, row.id))
+      .orderBy(asc(scenes.index))
+      .all();
+    return { ...row, scenes: rows.map((s) => toScene(videoId, s)) };
+  }
+
+  keyframePath(videoId: string, sceneId: string): string | null {
+    const row = this.store
+      .select({ path: scenes.keyframePath })
+      .from(scenes)
+      .innerJoin(
+        sceneDetections,
+        eq(scenes.sceneDetectionId, sceneDetections.id),
+      )
+      .where(and(eq(scenes.id, sceneId), eq(sceneDetections.videoId, videoId)))
+      .get();
+    return row?.path ?? null;
+  }
+
+  summary(videoId: string): SceneDetectionSummary | null {
+    const row = this.current(videoId);
+    if (!row) return null;
+    const n = (filter: SQL | undefined) =>
+      this.store.select({ n: count() }).from(scenes).where(filter).get()!.n;
+    return {
+      id: row.id,
+      createdAt: row.createdAt,
+      scenes: n(eq(scenes.sceneDetectionId, row.id)),
+      keyframes: n(
+        and(
+          eq(scenes.sceneDetectionId, row.id),
+          isNotNull(scenes.keyframePath),
+        ),
+      ),
+    };
+  }
+
+  private current(videoId: string) {
+    return this.store
+      .select()
+      .from(sceneDetections)
+      .where(eq(sceneDetections.videoId, videoId))
+      .get();
   }
 }

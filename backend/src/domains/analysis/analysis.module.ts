@@ -1,40 +1,46 @@
-import { Module, type OnModuleInit } from '@nestjs/common';
+import { Inject, Module, type OnModuleInit } from '@nestjs/common';
 import { InfraModule } from '../../infra/infra.module.js';
 import { QueueRunner } from '../../infra/queue/queue.runner.js';
 import { VideosModule } from '../videos/videos.module.js';
-import { AnalysisResultsController } from './analysis-results.controller.js';
-import { AnalysisResultsService } from './analysis-results.service.js';
 import { AnalysisController } from './analysis.controller.js';
 import { ANALYSIS_JOBS, type AnalysisJobInputs } from './analysis.jobs.js';
 import { AnalysisService } from './analysis.service.js';
-import { DiarizationService } from './diarization.service.js';
-import { EmbeddingService } from './embedding.service.js';
-import { OcrService } from './ocr.service.js';
-import { SceneDetectionService } from './scene-detection.service.js';
-import { TranscriptionService } from './transcription.service.js';
+import { DiarizationModule } from '../diarization/diarization.module.js';
+import { DIARIZER, type Diarizer } from '../diarization/interface.js';
+import { EmbeddingModule } from '../embedding/embedding.module.js';
+import { EMBEDDER, type Embedder } from '../embedding/interface.js';
+import { OCR_READER, type OcrReader } from '../ocr/interface.js';
+import { OcrModule } from '../ocr/ocr.module.js';
+import {
+  SCENE_DETECTOR,
+  type SceneDetector,
+} from '../scene-detection/interface.js';
+import { SceneDetectionModule } from '../scene-detection/scene-detection.module.js';
+import { TRANSCRIBER, type Transcriber } from '../transcription/interface.js';
+import { TranscriptionModule } from '../transcription/transcription.module.js';
 
 @Module({
-  imports: [InfraModule, VideosModule],
-  controllers: [AnalysisController, AnalysisResultsController],
-  providers: [
-    AnalysisService,
-    AnalysisResultsService,
-    TranscriptionService,
-    DiarizationService,
-    SceneDetectionService,
-    OcrService,
-    EmbeddingService,
+  imports: [
+    InfraModule,
+    VideosModule,
+    TranscriptionModule,
+    DiarizationModule,
+    SceneDetectionModule,
+    OcrModule,
+    EmbeddingModule,
   ],
-  exports: [AnalysisService, AnalysisResultsService],
+  controllers: [AnalysisController],
+  providers: [AnalysisService],
+  exports: [AnalysisService],
 })
 export class AnalysisModule implements OnModuleInit {
   constructor(
     private readonly runner: QueueRunner,
-    private readonly transcription: TranscriptionService,
-    private readonly diarization: DiarizationService,
-    private readonly scenes: SceneDetectionService,
-    private readonly ocr: OcrService,
-    private readonly embedding: EmbeddingService,
+    @Inject(TRANSCRIBER) private readonly transcription: Transcriber,
+    @Inject(DIARIZER) private readonly diarization: Diarizer,
+    @Inject(SCENE_DETECTOR) private readonly scenes: SceneDetector,
+    @Inject(OCR_READER) private readonly ocr: OcrReader,
+    @Inject(EMBEDDER) private readonly embedding: Embedder,
   ) {}
 
   onModuleInit() {

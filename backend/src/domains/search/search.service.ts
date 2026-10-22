@@ -18,7 +18,7 @@ import {
   WORKER_CLIENT,
   type WorkerClient,
 } from '../../infra/worker-client/interface.js';
-import { toScene } from '../analysis/analysis.model.js';
+import { toScene } from '../scene-detection/scene.model.js';
 import { GroupsService } from '../groups/groups.service.js';
 import { VideosService } from '../videos/videos.service.js';
 import type {

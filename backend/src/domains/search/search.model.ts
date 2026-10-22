@@ -1,8 +1,6 @@
 import type { videos } from '../../infra/store/schema/index.js';
-import type {
-  Scene,
-  TranscriptionSegment,
-} from '../analysis/analysis.model.js';
+import type { Scene } from '../scene-detection/scene.model.js';
+import type { TranscriptionSegment } from '../transcription/transcription.model.js';
 
 export type SearchVideo = Pick<
   typeof videos.$inferSelect,

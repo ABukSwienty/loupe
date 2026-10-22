@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { Inject, Injectable } from '@nestjs/common';
-import { eq } from 'drizzle-orm';
+import { asc, count, eq, max } from 'drizzle-orm';
 import type { Store } from '../../infra/store/client.js';
 import { ocrLines, ocrResults } from '../../infra/store/schema/index.js';
 import { STORE } from '../../infra/store/store.module.js';
@@ -8,23 +8,27 @@ import {
   WORKER_CLIENT,
   type WorkerClient,
 } from '../../infra/worker-client/interface.js';
-import type { AnalysisJobInputs } from './analysis.jobs.js';
-import { batches, fileUpload, INSERT_BATCH } from './media.js';
-import { SceneDetectionService } from './scene-detection.service.js';
+import { batches, fileUpload, INSERT_BATCH } from '../../common/media.js';
+import {
+  SCENE_DETECTOR,
+  type SceneDetector,
+} from '../scene-detection/interface.js';
+import type { OcrInput, OcrReader } from './interface.js';
+import type { OcrResult, OcrSummary } from './ocr.model.js';
 
 /** Keyframes per worker request. */
 const OCR_BATCH = 16;
 
 @Injectable()
-export class OcrService {
+export class OcrService implements OcrReader {
   constructor(
     @Inject(STORE) private readonly store: Store,
     @Inject(WORKER_CLIENT) private readonly worker: WorkerClient,
-    private readonly scenes: SceneDetectionService,
+    @Inject(SCENE_DETECTOR) private readonly scenes: SceneDetector,
   ) {}
 
   /** Job handler: reads the text in every scene keyframe and replaces the video's previous OCR results. */
-  async ocr({ videoId }: AnalysisJobInputs['ocr'], signal?: AbortSignal) {
+  async ocr({ videoId }: OcrInput, signal?: AbortSignal) {
     const keyframes = this.scenes.keyframeScenes(videoId);
     if (keyframes.length === 0) {
       throw new Error(
@@ -68,5 +72,54 @@ export class OcrService {
     });
 
     return { images: results.length, lines: lines.length };
+  }
+
+  results(videoId: string): OcrResult[] | null {
+    const results = this.store
+      .select()
+      .from(ocrResults)
+      .where(eq(ocrResults.videoId, videoId))
+      .orderBy(asc(ocrResults.time), asc(ocrResults.id))
+      .all();
+    if (results.length === 0) return null;
+
+    const lines = this.store
+      .select()
+      .from(ocrLines)
+      .innerJoin(ocrResults, eq(ocrLines.ocrResultId, ocrResults.id))
+      .where(eq(ocrResults.videoId, videoId))
+      .orderBy(asc(ocrLines.id))
+      .all();
+    const byResult = new Map<string, OcrResult['lines']>();
+    for (const { ocr_lines: line } of lines) {
+      const { id: _, ocrResultId, ...rest } = line;
+      const list = byResult.get(ocrResultId) ?? [];
+      list.push(rest);
+      byResult.set(ocrResultId, list);
+    }
+
+    return results.map((row) => {
+      const { imagePath: _, ...result } = row;
+      return { ...result, lines: byResult.get(result.id) ?? [] };
+    });
+  }
+
+  summary(videoId: string): OcrSummary | null {
+    const { images, createdAt } = this.store
+      .select({ images: count(), createdAt: max(ocrResults.createdAt) })
+      .from(ocrResults)
+      .where(eq(ocrResults.videoId, videoId))
+      .get()!;
+    if (images === 0) return null;
+    return {
+      createdAt: createdAt!,
+      images,
+      lines: this.store
+        .select({ n: count() })
+        .from(ocrLines)
+        .innerJoin(ocrResults, eq(ocrLines.ocrResultId, ocrResults.id))
+        .where(eq(ocrResults.videoId, videoId))
+        .get()!.n,
+    };
   }
 }

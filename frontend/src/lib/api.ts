@@ -210,8 +210,9 @@ export function runAnalysisStep(
   )
 }
 
-// Analysis results (backend/src/domains/analysis/analysis.model.ts). Times are
-// seconds into the video. Each responds 404 when its step hasn't run.
+// Analysis results (backend/src/domains/<step>/*.model.ts, the overview in
+// analysis/analysis.model.ts). Times are seconds into the video. Each responds
+// 404 when its step hasn't run.
 
 /** An absolute URL for a path the API returns, such as a scene's keyframeUrl. */
 export function apiUrl(path: string): string {
@@ -331,19 +332,19 @@ export async function getAnalysisOverview(videoId: string): Promise<AnalysisOver
 
 /** Always includes the chunks. */
 export async function getTranscription(videoId: string): Promise<Transcription> {
-  return (await request<Transcription>('GET', `${videoPath(videoId)}/transcription?include=chunks`)).data
+  return (await request<Transcription>('GET', `/transcription/${encodeURIComponent(videoId)}?include=chunks`)).data
 }
 
 export async function getDiarization(videoId: string): Promise<Diarization> {
-  return (await request<Diarization>('GET', `${videoPath(videoId)}/diarization`)).data
+  return (await request<Diarization>('GET', `/diarization/${encodeURIComponent(videoId)}`)).data
 }
 
 export async function getScenes(videoId: string): Promise<SceneDetection> {
-  return (await request<SceneDetection>('GET', `${videoPath(videoId)}/scenes`)).data
+  return (await request<SceneDetection>('GET', `/scenes/${encodeURIComponent(videoId)}`)).data
 }
 
 export async function getOcr(videoId: string): Promise<OcrResult[]> {
-  return (await request<OcrResult[]>('GET', `${videoPath(videoId)}/ocr`)).data
+  return (await request<OcrResult[]>('GET', `/ocr/${encodeURIComponent(videoId)}`)).data
 }
 
 // Groups and search (backend/src/domains/search/search.model.ts).
